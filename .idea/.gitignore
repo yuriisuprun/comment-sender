@@ -1,0 +1,27 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### IntelliJ IDEA ###
+.idea/libraries/
+.idea
+*.iws
+*.iml
+*.ipr
+
+### VS Code ###
+.vscode/
+# Default ignored files
+/shelf/
+/workspace.xml
+
+# Ignore specific IDEA files
+/mavenHomeManager.xml
+/copilot.data.migration.agent.xml
+/copilot.data.migration.ask.xml
+/copilot.data.migration.ask2agent.xml
+/copilot.data.migration.edit.xml
+/misc.xml
+/modules.xml
+/vcs.xml

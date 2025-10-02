@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Leave a Comment</title>
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    textarea { width: 300px; height: 100px; }
+    button { margin-top: 10px; padding: 8px 15px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h2>Leave a Comment</h2>
+  <textarea id="comment" placeholder="Type your comment here..."></textarea><br>
+  <button onclick="submitComment()">Submit</button>
+  
+  <p id="response"></p>
+
+  <script>
+    async function submitComment() {
+      const comment = document.getElementById("comment").value;
+      const responseEl = document.getElementById("response");
+
+      if (!comment) {
+        responseEl.textContent = "Please enter a comment!";
+        return;
+      }
+
+      try {
+        const res = await fetch("YOUR_API_GATEWAY_ENDPOINT", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ comment })
+        });
+
+        const data = await res.json();
+        responseEl.textContent = data.message || "Comment sent!";
+      } catch (err) {
+        responseEl.textContent = "Error sending comment.";
+        console.error(err);
+      }
+    }
+  </script>
+</body>
+</html>

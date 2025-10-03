@@ -1,0 +1,44 @@
+package handler;
+
+import com.amazonaws.services.lambda.runtime.Context;
+import com.amazonaws.services.lambda.runtime.RequestHandler;
+import com.amazonaws.services.simpleemail.AmazonSimpleEmailService;
+import com.amazonaws.services.simpleemail.AmazonSimpleEmailServiceClientBuilder;
+import com.amazonaws.services.simpleemail.model.*;
+
+import java.util.Map;
+
+public class CommentHandler implements RequestHandler<Map<String, Object>, Map<String, String>> {
+
+    private static final String ADMIN_EMAIL = System.getenv("ADMIN_EMAIL");
+    private static final String FROM_EMAIL = System.getenv("FROM_EMAIL");
+
+    @Override
+    public Map<String, String> handleRequest(Map<String, Object> input, Context context) {
+        String comment = (String) input.get("comment");
+        context.getLogger().log("Received comment: " + comment);
+
+        try {
+            sendEmail(comment);
+            return Map.of("message", "Comment sent successfully!");
+        } catch (Exception e) {
+            context.getLogger().log("Error sending email: " + e.getMessage());
+            return Map.of("message", "Failed to send comment.");
+        }
+    }
+
+    private void sendEmail(String comment) {
+        AmazonSimpleEmailService client = AmazonSimpleEmailServiceClientBuilder.standard()
+                .withRegion("us-east-1")
+                .build();
+
+        SendEmailRequest request = new SendEmailRequest()
+                .withDestination(new Destination().withToAddresses(ADMIN_EMAIL))
+                .withMessage(new Message()
+                        .withSubject(new Content().withCharset("UTF-8").withData("New User Comment"))
+                        .withBody(new Body().withText(new Content().withCharset("UTF-8").withData(comment))))
+                .withSource(FROM_EMAIL);
+
+        client.sendEmail(request);
+    }
+}

@@ -9,6 +9,7 @@ target/
 .idea/*
 !.idea/codeStyles/
 !.idea/runConfigurations/
+comment-sender.iml
 *.iml
 *.iws
 *.ipr

@@ -20,6 +20,10 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Make Gradle wrapper executable
+        working-directory: ./lambda
+        run: chmod +x gradlew
+
       - name: Build with Gradle
         working-directory: ./lambda
         run: ./gradlew build

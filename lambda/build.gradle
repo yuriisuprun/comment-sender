@@ -25,6 +25,7 @@ dependencies {
     implementation 'org.slf4j:slf4j-api:2.0.9'
 }
 
+// Build fat JAR for Lambda
 tasks.named('jar') {
     manifest {
         attributes(
@@ -34,4 +35,6 @@ tasks.named('jar') {
     from {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
+    // Handle duplicate META-INF files
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }

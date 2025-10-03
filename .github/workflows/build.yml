@@ -21,4 +21,5 @@ jobs:
           java-version: 21
 
       - name: Build with Gradle
+        working-directory: ./lambda
         run: ./gradlew build

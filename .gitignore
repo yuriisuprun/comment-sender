@@ -1,12 +1,14 @@
+### Maven build ###
 target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
 
 ### IntelliJ IDEA ###
-.idea/libraries/
-.idea/.gitignore
-.idea
-*.iws
+# Ignore all IDEA project files, except code style & run configs if you want to share
+.idea/*
+!.idea/codeStyles/
+!.idea/runConfigurations/
 *.iml
+*.iws
 *.ipr

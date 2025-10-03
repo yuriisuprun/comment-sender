@@ -27,4 +27,11 @@ dependencies {
 
 tasks.named('jar') {
     manifest {
-        at
+        attributes(
+                'Main-Class': 'handler.CommentHandler'
+        )
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}

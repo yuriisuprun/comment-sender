@@ -1,0 +1,30 @@
+plugins {
+    id 'java'
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // AWS Lambda Core
+    implementation 'com.amazonaws:aws-lambda-java-core:1.2.3'
+
+    // AWS SDK for SES
+    implementation 'com.amazonaws:aws-java-sdk-ses:1.12.700'
+
+    // Logging (optional)
+    implementation 'org.slf4j:slf4j-api:2.0.9'
+}
+
+tasks.named('jar') {
+    manifest {
+        at

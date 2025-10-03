@@ -20,7 +20,7 @@ public class CommentHandler implements RequestHandler<Map<String, Object>, Map<S
 
         try {
             sendEmail(comment);
-            return Map..of("message", "Comment sent successfully!");
+            return Map.of("message", "Comment sent successfully!");
         } catch (Exception e) {
             context.getLogger().log("Error sending email: " + e.getMessage());
             return Map.of("message", "Failed to send comment.");

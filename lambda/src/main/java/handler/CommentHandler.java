@@ -19,15 +19,17 @@ public class CommentHandler implements RequestHandler<Map<String, Object>, Map<S
         context.getLogger().log("Received comment: " + comment);
 
         try {
-            sendEmail(comment);
+            context.getLogger().log("Preparing to send email to: " + ADMIN_EMAIL);
+            sendEmail(comment, context);
+            context.getLogger().log("Email sent successfully to: " + ADMIN_EMAIL);
             return Map.of("message", "Comment sent successfully!");
         } catch (Exception e) {
-            context.getLogger().log("Error sending email: " + e.getMessage());
+            context.getLogger().log("Exception while sending email: " + e.getMessage());
             return Map.of("message", "Failed to send comment.");
         }
     }
 
-    private void sendEmail(String comment) {
+    private void sendEmail(String comment, Context context) {
         AmazonSimpleEmailService client = AmazonSimpleEmailServiceClientBuilder.standard()
                 .withRegion("eu-central-1")
                 .build();
@@ -39,6 +41,8 @@ public class CommentHandler implements RequestHandler<Map<String, Object>, Map<S
                         .withBody(new Body().withText(new Content().withCharset("UTF-8").withData(comment))))
                 .withSource(FROM_EMAIL);
 
+        context.getLogger().log("Sending email request...");
         client.sendEmail(request);
+        context.getLogger().log("Send email request completed.");
     }
 }

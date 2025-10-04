@@ -1,19 +1,40 @@
+variable "lambda_package_path" {
+  description = "Path to the built Lambda JAR file"
+  type        = string
+  default     = ""  # optional for import
+}
+
+variable "from_email" {
+  type        = string
+  description = "SES verified from email address"
+}
+
+variable "admin_email" {
+  type        = string
+  description = "SES verified admin email address"
+}
+
+variable "aws_region" {
+  type        = string
+  description = "AWS region"
+}
+
+resource "random_string" "suffix" {
+  length  = 6
+  special = false
+}
+
 resource "aws_iam_role" "lambda_role" {
   name = "comment-sender-lambda-role-${random_string.suffix.result}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "lambda.amazonaws.com" }
-      Action = "sts:AssumeRole"
+      Action    = "sts:AssumeRole"
     }]
   })
-}
-
-resource "random_string" "suffix" {
-  length  = 6
-  special = false
 }
 
 resource "aws_iam_policy_attachment" "lambda_ses_attach" {
@@ -42,8 +63,15 @@ resource "aws_lambda_function" "comment_handler" {
   runtime       = "java21"
   role          = aws_iam_role.lambda_role.arn
 
-  filename         = var.lambda_package_path
-  source_code_hash = filebase64sha256(var.lambda_package_path)
+  dynamic "filename" {
+    for_each = var.lambda_package_path != "" ? [1] : []
+    content  = var.lambda_package_path
+  }
+
+  dynamic "source_code_hash" {
+    for_each = var.lambda_package_path != "" ? [1] : []
+    content  = filebase64sha256(var.lambda_package_path)
+  }
 
   environment {
     variables = {

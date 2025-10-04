@@ -29,7 +29,7 @@ public class CommentHandler implements RequestHandler<Map<String, Object>, Map<S
 
     private void sendEmail(String comment) {
         AmazonSimpleEmailService client = AmazonSimpleEmailServiceClientBuilder.standard()
-                .withRegion("us-east-1")
+                .withRegion("eu-central-1")
                 .build();
 
         SendEmailRequest request = new SendEmailRequest()

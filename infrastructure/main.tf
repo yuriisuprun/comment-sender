@@ -35,14 +35,15 @@ resource "aws_lambda_function" "comment_handler" {
   handler       = "handler.CommentHandler::handleRequest"
   runtime       = "java21"
   role          = aws_iam_role.lambda_role.arn
-  filename         = "../lambda/build/libs/comment-sender-1.0.0.jar"
-  source_code_hash = filebase64sha256("../lambda/build/libs/comment-sender-1.0.0.jar")
+
+  filename         = var.lambda_package_path
+  source_code_hash = filebase64sha256(var.lambda_package_path)
 
   environment {
     variables = {
-      ADMIN_EMAIL = var.admin_email
-      FROM_EMAIL  = var.from_email
-      DEFAULT_REGION  = var.aws_region
+      ADMIN_EMAIL    = var.admin_email
+      FROM_EMAIL     = var.from_email
+      DEFAULT_REGION = var.aws_region
     }
   }
 }

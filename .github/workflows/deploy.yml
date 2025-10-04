@@ -62,9 +62,10 @@ jobs:
       - name: Import existing Lambda (if needed)
         working-directory: ./infrastructure
         run: |
+          set -e
           if ! terraform state list | grep -q "aws_lambda_function.comment_handler"; then
             echo "Importing existing Lambda function into Terraform state..."
-            terraform import aws_lambda_function.comment_handler comment-sender-lambda
+            terraform import -input=false aws_lambda_function.comment_handler comment-sender-lambda
           else
             echo "Lambda function already imported."
           fi

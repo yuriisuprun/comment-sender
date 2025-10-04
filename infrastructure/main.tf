@@ -42,7 +42,6 @@ resource "aws_lambda_function" "comment_handler" {
   runtime       = "java21"
   role          = aws_iam_role.lambda_role.arn
 
-  # Import-safe: only set filename and hash if provided
   filename         = var.lambda_package_path != "" ? var.lambda_package_path : null
   source_code_hash = var.lambda_package_path != "" ? filebase64sha256(var.lambda_package_path) : null
 
@@ -80,7 +79,7 @@ resource "aws_apigatewayv2_stage" "default_stage" {
 }
 
 resource "aws_lambda_permission" "allow_apigw" {
-  statement_id  = "AllowAPIGatewayInvoke"
+  statement_id  = "AllowAPIGatewayInvoke-${random_string.suffix.result}"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.comment_handler.arn
   principal     = "apigateway.amazonaws.com"

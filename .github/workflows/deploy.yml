@@ -9,22 +9,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
+      - name: Set up Java 21
+        uses: actions/setup-java@v3
         with:
           distribution: temurin
-          java-version: 17   # adjust if using another version
+          java-version: 21
 
-      - name: Build Lambda
-        run: ./gradlew :lambda:build
+      - name: Make Gradle wrapper executable
+        working-directory: ./lambda
+        run: chmod +x gradlew
 
-      - name: Upload Lambda JAR
-        uses: actions/upload-artifact@v4
-        with:
-          name: lambda-jar
-          path: ./lambda/build/libs/*.jar
+      - name: Build with Gradle
+        working-directory: ./lambda
+        run: ./gradlew build
 
   deploy:
     runs-on: ubuntu-latest

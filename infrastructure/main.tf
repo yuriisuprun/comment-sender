@@ -1,24 +1,3 @@
-variable "lambda_package_path" {
-  description = "Path to the built Lambda JAR file"
-  type        = string
-  default     = ""  # optional for import
-}
-
-variable "from_email" {
-  type        = string
-  description = "SES verified from email address"
-}
-
-variable "admin_email" {
-  type        = string
-  description = "SES verified admin email address"
-}
-
-variable "aws_region" {
-  type        = string
-  description = "AWS region"
-}
-
 resource "random_string" "suffix" {
   length  = 6
   special = false

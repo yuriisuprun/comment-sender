@@ -42,15 +42,8 @@ resource "aws_lambda_function" "comment_handler" {
   runtime       = "java21"
   role          = aws_iam_role.lambda_role.arn
 
-  dynamic "filename" {
-    for_each = var.lambda_package_path != "" ? [1] : []
-    content  = var.lambda_package_path
-  }
-
-  dynamic "source_code_hash" {
-    for_each = var.lambda_package_path != "" ? [1] : []
-    content  = filebase64sha256(var.lambda_package_path)
-  }
+  filename         = var.lambda_package_path != "" ? var.lambda_package_path : null
+  source_code_hash = var.lambda_package_path != "" ? filebase64sha256(var.lambda_package_path) : null
 
   environment {
     variables = {

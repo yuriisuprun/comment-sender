@@ -59,6 +59,9 @@ jobs:
         working-directory: ./infrastructure
         run: terraform init
 
-      - name: Terraform Apply
+      - name: Find JAR and Apply Terraform
         working-directory: ./infrastructure
-        run: terraform apply -auto-approve
+        run: |
+          JAR_PATH=$(ls ../lambda/build/libs/*.jar | head -n 1)
+          echo "Using JAR: $JAR_PATH"
+          terraform apply -auto-approve -var="lambda_package_path=$JAR_PATH"

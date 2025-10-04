@@ -57,7 +57,7 @@ jobs:
 
       - name: Terraform Init
         working-directory: ./infrastructure
-        run: terraform init && terraform import aws_iam_role.lambda_role comment-sender-lambda-role
+        run: terraform init
 
 
       - name: Find JAR and Apply Terraform

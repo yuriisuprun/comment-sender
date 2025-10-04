@@ -1,5 +1,6 @@
 resource "aws_iam_role" "lambda_role" {
-  name = "comment-sender-lambda-role"
+  name = "comment-sender-lambda-role-${random_string.suffix.result}"
+
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -8,6 +9,11 @@ resource "aws_iam_role" "lambda_role" {
       Action = "sts:AssumeRole"
     }]
   })
+}
+
+resource "random_string" "suffix" {
+  length  = 6
+  special = false
 }
 
 resource "aws_iam_policy_attachment" "lambda_ses_attach" {

@@ -41,6 +41,7 @@ resource "aws_lambda_function" "comment_handler" {
   handler       = "handler.CommentHandler::handleRequest"
   runtime       = "java21"
   role          = aws_iam_role.lambda_role.arn
+  timeout = 15
 
   filename         = var.lambda_package_path != "" ? var.lambda_package_path : null
   source_code_hash = var.lambda_package_path != "" ? filebase64sha256(var.lambda_package_path) : null

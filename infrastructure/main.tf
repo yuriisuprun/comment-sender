@@ -3,6 +3,9 @@ resource "random_string" "suffix" {
   special = false
 }
 
+# -------------------------------
+# IAM Role for Lambda
+# -------------------------------
 resource "aws_iam_role" "lambda_role" {
   name = "comment-sender-lambda-role-${random_string.suffix.result}"
 
@@ -16,6 +19,9 @@ resource "aws_iam_role" "lambda_role" {
   })
 }
 
+# -------------------------------
+# Custom SES Policy (Least Privilege)
+# -------------------------------
 resource "aws_iam_policy" "lambda_ses_policy" {
   name        = "lambda-ses-send-only-${random_string.suffix.result}"
   description = "Allow Lambda to send emails via SES"
@@ -35,18 +41,23 @@ resource "aws_iam_policy" "lambda_ses_policy" {
   })
 }
 
+# Attach SES Policy to Lambda Role
 resource "aws_iam_policy_attachment" "lambda_ses_attach" {
   name       = "lambda-ses-policy-attach-${random_string.suffix.result}"
   roles      = [aws_iam_role.lambda_role.name]
   policy_arn = aws_iam_policy.lambda_ses_policy.arn
 }
 
+# Attach Basic Lambda Logging Policy
 resource "aws_iam_policy_attachment" "lambda_logs_attach" {
   name       = "lambda-logs-policy-attach-${random_string.suffix.result}"
   roles      = [aws_iam_role.lambda_role.name]
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+# -------------------------------
+# SES Email Identities
+# -------------------------------
 resource "aws_ses_email_identity" "from_email" {
   email = var.from_email
 }
@@ -55,6 +66,9 @@ resource "aws_ses_email_identity" "admin_email" {
   email = var.admin_email
 }
 
+# -------------------------------
+# Lambda Function
+# -------------------------------
 resource "aws_lambda_function" "comment_handler" {
   function_name = "comment-sender-lambda"
   handler       = "handler.CommentHandler::handleRequest"
@@ -72,8 +86,17 @@ resource "aws_lambda_function" "comment_handler" {
       DEFAULT_REGION = var.aws_region
     }
   }
+
+  # ✅ Ensure IAM policies are attached before Lambda creation
+  depends_on = [
+    aws_iam_policy_attachment.lambda_ses_attach,
+    aws_iam_policy_attachment.lambda_logs_attach
+  ]
 }
 
+# -------------------------------
+# API Gateway Setup
+# -------------------------------
 resource "aws_apigatewayv2_api" "http_api" {
   name          = "comment-sender-api"
   protocol_type = "HTTP"
@@ -98,6 +121,9 @@ resource "aws_apigatewayv2_stage" "default_stage" {
   auto_deploy = true
 }
 
+# -------------------------------
+# Lambda Permission for API Gateway
+# -------------------------------
 resource "aws_lambda_permission" "allow_apigw" {
   statement_id  = "AllowAPIGatewayInvoke-${random_string.suffix.result}"
   action        = "lambda:InvokeFunction"

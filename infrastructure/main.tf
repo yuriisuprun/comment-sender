@@ -16,14 +16,33 @@ resource "aws_iam_role" "lambda_role" {
   })
 }
 
+resource "aws_iam_policy" "lambda_ses_policy" {
+  name        = "lambda-ses-send-only-${random_string.suffix.result}"
+  description = "Allow Lambda to send emails via SES"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = [
+          "ses:SendEmail",
+          "ses:SendRawEmail"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_policy_attachment" "lambda_ses_attach" {
-  name       = "lambda-ses-policy-attach"
+  name       = "lambda-ses-policy-attach-${random_string.suffix.result}"
   roles      = [aws_iam_role.lambda_role.name]
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSESFullAccess"
+  policy_arn = aws_iam_policy.lambda_ses_policy.arn
 }
 
 resource "aws_iam_policy_attachment" "lambda_logs_attach" {
-  name       = "lambda-logs-policy-attach"
+  name       = "lambda-logs-policy-attach-${random_string.suffix.result}"
   roles      = [aws_iam_role.lambda_role.name]
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
@@ -41,7 +60,7 @@ resource "aws_lambda_function" "comment_handler" {
   handler       = "handler.CommentHandler::handleRequest"
   runtime       = "java21"
   role          = aws_iam_role.lambda_role.arn
-  timeout = 15
+  timeout       = 15
 
   filename         = var.lambda_package_path != "" ? var.lambda_package_path : null
   source_code_hash = var.lambda_package_path != "" ? filebase64sha256(var.lambda_package_path) : null

@@ -29,26 +29,26 @@ public class CommentHandler implements RequestHandler<Map<String, Object>, Map<S
         }
     }
 
-    AmazonSimpleEmailServiceClientBuilder.standard()
-            .withRegion(System.getenv("DEFAULT_REGION"))
-            .build();
+    private void sendEmail(String comment, Context context) {
+        AmazonSimpleEmailService client = AmazonSimpleEmailServiceClientBuilder.standard()
+                .withRegion(System.getenv("DEFAULT_REGION"))
+                .build();
 
-    SendEmailRequest request = new SendEmailRequest()
-            .withDestination(new Destination().withToAddresses(ADMIN_EMAIL))
-            .withMessage(new Message()
-                    .withSubject(new Content().withCharset("UTF-8").withData("New User Comment"))
-                    .withBody(new Body().withText(new Content().withCharset("UTF-8").withData(comment))))
-            .withSource(FROM_EMAIL);
+        SendEmailRequest request = new SendEmailRequest()
+                .withDestination(new Destination().withToAddresses(ADMIN_EMAIL))
+                .withMessage(new Message()
+                        .withSubject(new Content().withCharset("UTF-8").withData("New User Comment"))
+                        .withBody(new Body().withText(new Content().withCharset("UTF-8").withData(comment))))
+                .withSource(FROM_EMAIL);
 
-        context.getLogger().log("Sending email request...");
         try {
-            context.getLogger().log("Calling SES client...");
+            context.getLogger().log("Sending email request...");
             SendEmailResult result = client.sendEmail(request);
             context.getLogger().log("SES message ID: " + result.getMessageId());
+            context.getLogger().log("Send email request completed.");
         } catch (Exception e) {
-            context.getLogger().log("SES error: " + e);
+            context.getLogger().log("SES error: " + e.getMessage());
             throw e;
         }
-        context.getLogger().log("Send email request completed.");
     }
 }

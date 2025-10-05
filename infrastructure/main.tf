@@ -92,7 +92,7 @@ resource "aws_lambda_function" "comment_handler" {
 }
 
 # -------------------------------
-# API Gateway (REST API)
+# API Gateway (Stable REST API)
 # -------------------------------
 resource "aws_api_gateway_rest_api" "rest_api" {
   name        = "comment-sender-api"
@@ -125,20 +125,35 @@ resource "aws_api_gateway_integration" "lambda_integration" {
   uri                     = aws_lambda_function.comment_handler.invoke_arn
 }
 
-# Deployment + Stage
+# -------------------------------
+# Deployment - stable and reusable
+# -------------------------------
 resource "aws_api_gateway_deployment" "deployment" {
   rest_api_id = aws_api_gateway_rest_api.rest_api.id
-  depends_on  = [aws_api_gateway_integration.lambda_integration]
+
+  # Trigger redeployment only when integration or lambda changes
+  triggers = {
+    redeploy_hash = sha1(join(",", [
+      aws_api_gateway_integration.lambda_integration.id,
+      aws_lambda_function.comment_handler.source_code_hash
+    ]))
+  }
 
   lifecycle {
     create_before_destroy = true
   }
+
+  depends_on = [aws_api_gateway_integration.lambda_integration]
 }
 
-resource "aws_api_gateway_stage" "stage" {
+# -------------------------------
+# Stage - $default (no /stage name in URL)
+# -------------------------------
+resource "aws_api_gateway_stage" "default_stage" {
   rest_api_id   = aws_api_gateway_rest_api.rest_api.id
   deployment_id = aws_api_gateway_deployment.deployment.id
-  stage_name    = "test"
+  stage_name    = "$default"
+  auto_deploy   = false
 }
 
 # -------------------------------
@@ -153,8 +168,9 @@ resource "aws_lambda_permission" "allow_apigw" {
 }
 
 # -------------------------------
-# Output
+# Outputs
 # -------------------------------
 output "api_invoke_url" {
-  value = "https://${aws_api_gateway_rest_api.rest_api.id}.execute-api.${var.aws_region}.amazonaws.com/test/comment"
+  description = "Stable Invoke URL for API Gateway endpoint"
+  value       = "https://${aws_api_gateway_rest_api.rest_api.id}.execute-api.${var.aws_region}.amazonaws.com/comment"
 }

@@ -41,7 +41,14 @@ public class CommentHandler implements RequestHandler<Map<String, Object>, Map<S
             .withSource(FROM_EMAIL);
 
         context.getLogger().log("Sending email request...");
-        client.sendEmail(request);
+        try {
+            context.getLogger().log("Calling SES client...");
+            SendEmailResult result = client.sendEmail(request);
+            context.getLogger().log("SES message ID: " + result.getMessageId());
+        } catch (Exception e) {
+            context.getLogger().log("SES error: " + e);
+            throw e;
+        }
         context.getLogger().log("Send email request completed.");
     }
 }

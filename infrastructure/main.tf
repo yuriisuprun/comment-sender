@@ -92,7 +92,7 @@ resource "aws_lambda_function" "comment_handler" {
 }
 
 # -------------------------------
-# API Gateway (Stable REST API)
+# REST API Gateway (stable ID)
 # -------------------------------
 resource "aws_api_gateway_rest_api" "rest_api" {
   name        = "comment-sender-api"
@@ -116,22 +116,21 @@ resource "aws_api_gateway_method" "comment_post" {
 
 # Integration with Lambda
 resource "aws_api_gateway_integration" "lambda_integration" {
-  rest_api_id = aws_api_gateway_rest_api.rest_api.id
-  resource_id = aws_api_gateway_resource.comment_resource.id
-  http_method = aws_api_gateway_method.comment_post.http_method
-
+  rest_api_id             = aws_api_gateway_rest_api.rest_api.id
+  resource_id             = aws_api_gateway_resource.comment_resource.id
+  http_method             = aws_api_gateway_method.comment_post.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.comment_handler.invoke_arn
 }
 
 # -------------------------------
-# Deployment - stable and reusable
+# Deployment (keeps same API ID)
 # -------------------------------
 resource "aws_api_gateway_deployment" "deployment" {
   rest_api_id = aws_api_gateway_rest_api.rest_api.id
 
-  # Trigger redeployment only when integration or lambda changes
+  # Trigger redeploys when Lambda or integration changes
   triggers = {
     redeploy_hash = sha1(join(",", [
       aws_api_gateway_integration.lambda_integration.id,
@@ -147,13 +146,13 @@ resource "aws_api_gateway_deployment" "deployment" {
 }
 
 # -------------------------------
-# Stage - $default (no /stage name in URL)
+# Stage - "prod" (required for REST API)
 # -------------------------------
-resource "aws_api_gateway_stage" "default_stage" {
+resource "aws_api_gateway_stage" "prod" {
   rest_api_id   = aws_api_gateway_rest_api.rest_api.id
   deployment_id = aws_api_gateway_deployment.deployment.id
-  stage_name    = "$default"
-  auto_deploy   = false
+  stage_name    = "prod"
+  description   = "Production stage"
 }
 
 # -------------------------------
@@ -171,6 +170,6 @@ resource "aws_lambda_permission" "allow_apigw" {
 # Outputs
 # -------------------------------
 output "api_invoke_url" {
-  description = "Stable Invoke URL for API Gateway endpoint"
-  value       = "https://${aws_api_gateway_rest_api.rest_api.id}.execute-api.${var.aws_region}.amazonaws.com/comment"
+  description = "Invoke URL for API Gateway endpoint"
+  value       = "https://${aws_api_gateway_rest_api.rest_api.id}.execute-api.${var.aws_region}.amazonaws.com/prod/comment"
 }

@@ -5,9 +5,9 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.simpleemail.AmazonSimpleEmailService;
 import com.amazonaws.services.simpleemail.AmazonSimpleEmailServiceClientBuilder;
 import com.amazonaws.services.simpleemail.model.*;
+
 import java.io.StringWriter;
 import java.io.PrintWriter;
-
 import java.util.Map;
 
 public class CommentHandler implements RequestHandler<Map<String, Object>, Map<String, String>> {
@@ -21,15 +21,16 @@ public class CommentHandler implements RequestHandler<Map<String, Object>, Map<S
         context.getLogger().log("Received comment: " + comment);
 
         try {
-            context.getLogger().log("Sending email request...");
-            SendEmailResult result = client.sendEmail(request);
-            context.getLogger().log("SES message ID: " + result.getMessageId());
+            context.getLogger().log("Preparing to send email to: " + ADMIN_EMAIL);
+            sendEmail(comment, context);
+            context.getLogger().log("Email sent successfully to: " + ADMIN_EMAIL);
+            return Map.of("message", "Comment sent successfully!");
         } catch (Exception e) {
-            context.getLogger().log("SES error: " + e.toString());
+            context.getLogger().log("Exception while sending email: " + e.toString());
             StringWriter sw = new StringWriter();
             e.printStackTrace(new PrintWriter(sw));
             context.getLogger().log(sw.toString());
-            throw e;
+            return Map.of("message", "Failed to send comment.");
         }
     }
 
@@ -51,7 +52,10 @@ public class CommentHandler implements RequestHandler<Map<String, Object>, Map<S
             context.getLogger().log("SES message ID: " + result.getMessageId());
             context.getLogger().log("Send email request completed.");
         } catch (Exception e) {
-            context.getLogger().log("SES error: " + e.getMessage());
+            context.getLogger().log("SES error: " + e.toString());
+            StringWriter sw = new StringWriter();
+            e.printStackTrace(new PrintWriter(sw));
+            context.getLogger().log(sw.toString());
             throw e;
         }
     }

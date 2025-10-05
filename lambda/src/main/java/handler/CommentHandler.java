@@ -29,17 +29,16 @@ public class CommentHandler implements RequestHandler<Map<String, Object>, Map<S
         }
     }
 
-    private void sendEmail(String comment, Context context) {
-        AmazonSimpleEmailService client = AmazonSimpleEmailServiceClientBuilder.standard()
-                .withRegion("eu-central-1")
-                .build();
+    AmazonSimpleEmailServiceClientBuilder.standard()
+            .withRegion(System.getenv("DEFAULT_REGION"))
+            .build();
 
-        SendEmailRequest request = new SendEmailRequest()
-                .withDestination(new Destination().withToAddresses(ADMIN_EMAIL))
-                .withMessage(new Message()
-                        .withSubject(new Content().withCharset("UTF-8").withData("New User Comment"))
-                        .withBody(new Body().withText(new Content().withCharset("UTF-8").withData(comment))))
-                .withSource(FROM_EMAIL);
+    SendEmailRequest request = new SendEmailRequest()
+            .withDestination(new Destination().withToAddresses(ADMIN_EMAIL))
+            .withMessage(new Message()
+                    .withSubject(new Content().withCharset("UTF-8").withData("New User Comment"))
+                    .withBody(new Body().withText(new Content().withCharset("UTF-8").withData(comment))))
+            .withSource(FROM_EMAIL);
 
         context.getLogger().log("Sending email request...");
         client.sendEmail(request);

@@ -10,10 +10,10 @@ resource "aws_iam_role" "lambda_role" {
   name = "comment-sender-lambda-role-${random_string.suffix.result}"
 
   assume_role_policy = jsonencode({
-    Version = "2012-10-17"
+    Version = "2012-10-17",
     Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "lambda.amazonaws.com" }
+      Effect    = "Allow",
+      Principal = { Service = "lambda.amazonaws.com" },
       Action    = "sts:AssumeRole"
     }]
   })
@@ -27,28 +27,26 @@ resource "aws_iam_policy" "lambda_ses_policy" {
   description = "Allow Lambda to send emails via SES"
 
   policy = jsonencode({
-    Version = "2012-10-17"
+    Version = "2012-10-17",
     Statement = [
       {
-        Effect   = "Allow"
+        Effect   = "Allow",
         Action   = [
           "ses:SendEmail",
           "ses:SendRawEmail"
-        ]
+        ],
         Resource = "*"
       }
     ]
   })
 }
 
-# Attach SES Policy to Lambda Role
 resource "aws_iam_policy_attachment" "lambda_ses_attach" {
   name       = "lambda-ses-policy-attach-${random_string.suffix.result}"
   roles      = [aws_iam_role.lambda_role.name]
   policy_arn = aws_iam_policy.lambda_ses_policy.arn
 }
 
-# Attach Basic Lambda Logging Policy
 resource "aws_iam_policy_attachment" "lambda_logs_attach" {
   name       = "lambda-logs-policy-attach-${random_string.suffix.result}"
   roles      = [aws_iam_role.lambda_role.name]
@@ -87,7 +85,6 @@ resource "aws_lambda_function" "comment_handler" {
     }
   }
 
-  # ✅ Ensure IAM policies are attached before Lambda creation
   depends_on = [
     aws_iam_policy_attachment.lambda_ses_attach,
     aws_iam_policy_attachment.lambda_logs_attach
@@ -95,30 +92,53 @@ resource "aws_lambda_function" "comment_handler" {
 }
 
 # -------------------------------
-# API Gateway Setup
+# API Gateway (REST API)
 # -------------------------------
-resource "aws_apigatewayv2_api" "http_api" {
-  name          = "comment-sender-api"
-  protocol_type = "HTTP"
+resource "aws_api_gateway_rest_api" "rest_api" {
+  name        = "comment-sender-api"
+  description = "API Gateway for sending comments via SES"
 }
 
-resource "aws_apigatewayv2_integration" "lambda_integration" {
-  api_id             = aws_apigatewayv2_api.http_api.id
-  integration_type   = "AWS_PROXY"
-  integration_uri    = aws_lambda_function.comment_handler.arn
-  integration_method = "POST"
+# Resource path: /comment
+resource "aws_api_gateway_resource" "comment_resource" {
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id
+  parent_id   = aws_api_gateway_rest_api.rest_api.root_resource_id
+  path_part   = "comment"
 }
 
-resource "aws_apigatewayv2_route" "comment_route" {
-  api_id    = aws_apigatewayv2_api.http_api.id
-  route_key = "POST /comment"
-  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
+# POST method
+resource "aws_api_gateway_method" "comment_post" {
+  rest_api_id   = aws_api_gateway_rest_api.rest_api.id
+  resource_id   = aws_api_gateway_resource.comment_resource.id
+  http_method   = "POST"
+  authorization = "NONE"
 }
 
-resource "aws_apigatewayv2_stage" "default_stage" {
-  api_id      = aws_apigatewayv2_api.http_api.id
-  name        = "$default"
-  auto_deploy = true
+# Integration with Lambda
+resource "aws_api_gateway_integration" "lambda_integration" {
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id
+  resource_id = aws_api_gateway_resource.comment_resource.id
+  http_method = aws_api_gateway_method.comment_post.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.comment_handler.invoke_arn
+}
+
+# Deployment + Stage
+resource "aws_api_gateway_deployment" "deployment" {
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id
+  depends_on  = [aws_api_gateway_integration.lambda_integration]
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_api_gateway_stage" "stage" {
+  rest_api_id   = aws_api_gateway_rest_api.rest_api.id
+  deployment_id = aws_api_gateway_deployment.deployment.id
+  stage_name    = "test"
 }
 
 # -------------------------------
@@ -127,11 +147,14 @@ resource "aws_apigatewayv2_stage" "default_stage" {
 resource "aws_lambda_permission" "allow_apigw" {
   statement_id  = "AllowAPIGatewayInvoke-${random_string.suffix.result}"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.comment_handler.arn
+  function_name = aws_lambda_function.comment_handler.function_name
   principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.rest_api.execution_arn}/*/*"
+}
 
-  depends_on = [
-    aws_lambda_function.comment_handler,
-    aws_apigatewayv2_integration.lambda_integration
-  ]
+# -------------------------------
+# Output
+# -------------------------------
+output "api_invoke_url" {
+  value = "https://${aws_api_gateway_rest_api.rest_api.id}.execute-api.${var.aws_region}.amazonaws.com/test/comment"
 }

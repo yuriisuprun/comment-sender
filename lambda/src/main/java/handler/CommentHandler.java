@@ -5,6 +5,7 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.simpleemail.AmazonSimpleEmailService;
 import com.amazonaws.services.simpleemail.AmazonSimpleEmailServiceClientBuilder;
 import com.amazonaws.services.simpleemail.model.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.StringWriter;
 import java.io.PrintWriter;
@@ -16,6 +17,7 @@ public class CommentHandler implements RequestHandler<Map<String, Object>, Map<S
     private static final String ADMIN_EMAIL = System.getenv("ADMIN_EMAIL");
     private static final String FROM_EMAIL = System.getenv("FROM_EMAIL");
     private static final String REGION = System.getenv("DEFAULT_REGION");
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Override
     public Map<String, Object> handleRequest(Map<String, Object> input, Context context) {
@@ -65,21 +67,34 @@ public class CommentHandler implements RequestHandler<Map<String, Object>, Map<S
     }
 
     private String extractComment(Map<String, Object> input) {
-        Object commentObj = input.get("comment");
-        if (commentObj instanceof String) {
-            return (String) commentObj;
+        try {
+            Object bodyObj = input.get("body");
+            if (bodyObj instanceof String) {
+                Map<String, Object> bodyMap = OBJECT_MAPPER.readValue((String) bodyObj, Map.class);
+                Object commentObj = bodyMap.get("comment");
+                if (commentObj instanceof String) {
+                    return (String) commentObj;
+                }
+            }
+        } catch (Exception e) {
+            // Ignore parsing errors, return null
         }
         return null;
     }
 
     private Map<String, Object> response(int statusCode, String message) {
-        Map<String, Object> body = new HashMap<>();
-        body.put("message", message);
+        Map<String, Object> bodyMap = new HashMap<>();
+        bodyMap.put("message", message);
 
         Map<String, Object> response = new HashMap<>();
         response.put("statusCode", statusCode);
         response.put("headers", Map.of("Content-Type", "application/json"));
-        response.put("body", body);
+        try {
+            // 🔹 Stringify the body JSON to satisfy Lambda Proxy response format
+            response.put("body", OBJECT_MAPPER.writeValueAsString(bodyMap));
+        } catch (Exception e) {
+            response.put("body", "{\"message\":\"Failed to serialize response body\"}");
+        }
         return response;
     }
 

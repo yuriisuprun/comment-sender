@@ -19,13 +19,15 @@ public class CommentHandler implements RequestHandler<Map<String, Object>, Map<S
         context.getLogger().log("Received comment: " + comment);
 
         try {
-            context.getLogger().log("Preparing to send email to: " + ADMIN_EMAIL);
-            sendEmail(comment, context);
-            context.getLogger().log("Email sent successfully to: " + ADMIN_EMAIL);
-            return Map.of("message", "Comment sent successfully!");
+            context.getLogger().log("Sending email request...");
+            SendEmailResult result = client.sendEmail(request);
+            context.getLogger().log("SES message ID: " + result.getMessageId());
         } catch (Exception e) {
-            context.getLogger().log("Exception while sending email: " + e.getMessage());
-            return Map.of("message", "Failed to send comment.");
+            context.getLogger().log("SES error: " + e.toString());
+            StringWriter sw = new StringWriter();
+            e.printStackTrace(new PrintWriter(sw));
+            context.getLogger().log(sw.toString());
+            throw e;
         }
     }
 

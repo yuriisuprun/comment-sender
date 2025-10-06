@@ -22,6 +22,9 @@ resource "aws_iam_role" "lambda_role" {
   })
 }
 
+# -------------------------------
+# Custom SES Policy (Least Privilege)
+# -------------------------------
 resource "aws_iam_policy" "lambda_ses_policy" {
   name        = "lambda-ses-send-only-${random_string.suffix.result}"
   description = "Allow Lambda to send emails via SES"
@@ -74,8 +77,8 @@ resource "aws_lambda_function" "comment_handler" {
   role          = aws_iam_role.lambda_role.arn
   timeout       = 60
 
-  filename         = var.lambda_package_path
-  source_code_hash = filebase64sha256(var.lambda_package_path)
+  filename         = var.lambda_package_path != "" ? var.lambda_package_path : null
+  source_code_hash = var.lambda_package_path != "" ? filebase64sha256(var.lambda_package_path) : null
 
   environment {
     variables = {
@@ -94,87 +97,52 @@ resource "aws_lambda_function" "comment_handler" {
 # -------------------------------
 # REST API Gateway
 # -------------------------------
-resource "aws_api_gateway_rest_api" "rest_api" {
+resource "aws_api_gateway_rest_api" "api" {
   name        = "comment-sender-api"
   description = "API Gateway for sending comments via SES"
 }
 
-resource "aws_api_gateway_resource" "comment_resource" {
-  rest_api_id = aws_api_gateway_rest_api.rest_api.id
-  parent_id   = aws_api_gateway_rest_api.rest_api.root_resource_id
+# -------------------------------
+# Resource path: /comment
+# -------------------------------
+resource "aws_api_gateway_resource" "comment" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  parent_id   = aws_api_gateway_rest_api.api.root_resource_id
   path_part   = "comment"
 }
 
 # -------------------------------
-# POST method (Lambda proxy)
+# POST method (AWS_PROXY Lambda)
 # -------------------------------
 resource "aws_api_gateway_method" "comment_post" {
-  rest_api_id   = aws_api_gateway_rest_api.rest_api.id
-  resource_id   = aws_api_gateway_resource.comment_resource.id
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.comment.id
   http_method   = "POST"
   authorization = "NONE"
 }
 
 resource "aws_api_gateway_integration" "lambda_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.rest_api.id
-  resource_id             = aws_api_gateway_resource.comment_resource.id
+  rest_api_id             = aws_api_gateway_rest_api.api.id
+  resource_id             = aws_api_gateway_resource.comment.id
   http_method             = aws_api_gateway_method.comment_post.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.comment_handler.invoke_arn
 }
 
-resource "aws_api_gateway_method_response" "post_method_response" {
-  rest_api_id = aws_api_gateway_rest_api.rest_api.id
-  resource_id = aws_api_gateway_resource.comment_resource.id
-  http_method = aws_api_gateway_method.comment_post.http_method
-  status_code = "200"
-
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin" = true
-  }
-}
-
 # -------------------------------
-# OPTIONS method for CORS
+# OPTIONS method (CORS preflight)
 # -------------------------------
 resource "aws_api_gateway_method" "comment_options" {
-  rest_api_id   = aws_api_gateway_rest_api.rest_api.id
-  resource_id   = aws_api_gateway_resource.comment_resource.id
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.comment.id
   http_method   = "OPTIONS"
   authorization = "NONE"
 }
 
-resource "aws_api_gateway_integration" "comment_options_mock" {
-  rest_api_id   = aws_api_gateway_rest_api.rest_api.id
-  resource_id   = aws_api_gateway_resource.comment_resource.id
-  http_method   = aws_api_gateway_method.comment_options.http_method
-  type          = "MOCK"
-  request_templates = {
-    "application/json" = "{\"statusCode\": 200}"
-  }
-}
-
-resource "aws_api_gateway_integration_response" "options_integration_response" {
-  rest_api_id = aws_api_gateway_rest_api.rest_api.id
-  resource_id = aws_api_gateway_resource.comment_resource.id
-  http_method = aws_api_gateway_method.comment_options.http_method
-  status_code = "200"
-
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type'"
-    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST,GET'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-  }
-
-  response_templates = {
-    "application/json" = ""
-  }
-}
-
 resource "aws_api_gateway_method_response" "options_method_response" {
-  rest_api_id = aws_api_gateway_rest_api.rest_api.id
-  resource_id = aws_api_gateway_resource.comment_resource.id
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.comment.id
   http_method = aws_api_gateway_method.comment_options.http_method
   status_code = "200"
 
@@ -189,11 +157,41 @@ resource "aws_api_gateway_method_response" "options_method_response" {
   }
 }
 
+resource "aws_api_gateway_integration" "options_mock_integration" {
+  rest_api_id   = aws_api_gateway_rest_api.api.id
+  resource_id   = aws_api_gateway_resource.comment.id
+  http_method   = aws_api_gateway_method.comment_options.http_method
+  type          = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+
+  integration_http_method = "POST"
+}
+
+resource "aws_api_gateway_integration_response" "options_integration_response" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  resource_id = aws_api_gateway_resource.comment.id
+  http_method = aws_api_gateway_method.comment_options.http_method
+  status_code = aws_api_gateway_method_response.options_method_response.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST,GET'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+
+  response_templates = {
+    "application/json" = ""
+  }
+}
+
 # -------------------------------
 # Deployment & Stage
 # -------------------------------
 resource "aws_api_gateway_deployment" "deployment" {
-  rest_api_id = aws_api_gateway_rest_api.rest_api.id
+  rest_api_id = aws_api_gateway_rest_api.api.id
 
   triggers = {
     redeploy_hash = sha1(join(",", [
@@ -208,31 +206,32 @@ resource "aws_api_gateway_deployment" "deployment" {
 
   depends_on = [
     aws_api_gateway_integration.lambda_integration,
-    aws_api_gateway_integration.comment_options_mock
+    aws_api_gateway_integration.options_mock_integration
   ]
 }
 
 resource "aws_api_gateway_stage" "prod" {
-  rest_api_id   = aws_api_gateway_rest_api.rest_api.id
+  rest_api_id   = aws_api_gateway_rest_api.api.id
   deployment_id = aws_api_gateway_deployment.deployment.id
   stage_name    = "prod"
+  description   = "Production stage"
 }
 
 # -------------------------------
-# Lambda permission for API Gateway
+# Lambda Permission
 # -------------------------------
 resource "aws_lambda_permission" "allow_apigw" {
   statement_id  = "AllowAPIGatewayInvoke-${random_string.suffix.result}"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.comment_handler.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.rest_api.execution_arn}/*/*"
+  source_arn    = "${aws_api_gateway_rest_api.api.execution_arn}/*/*"
 }
 
 # -------------------------------
-# Outputs
+# Output
 # -------------------------------
 output "api_invoke_url" {
   description = "Invoke URL for API Gateway endpoint"
-  value       = "https://${aws_api_gateway_rest_api.rest_api.id}.execute-api.${var.aws_region}.amazonaws.com/prod/comment"
+  value       = "https://${aws_api_gateway_rest_api.api.id}.execute-api.${var.aws_region}.amazonaws.com/prod/comment"
 }

@@ -22,9 +22,6 @@ resource "aws_iam_role" "lambda_role" {
   })
 }
 
-# -------------------------------
-# Custom SES Policy (Least Privilege)
-# -------------------------------
 resource "aws_iam_policy" "lambda_ses_policy" {
   name        = "lambda-ses-send-only-${random_string.suffix.result}"
   description = "Allow Lambda to send emails via SES"
@@ -77,8 +74,8 @@ resource "aws_lambda_function" "comment_handler" {
   role          = aws_iam_role.lambda_role.arn
   timeout       = 60
 
-  filename         = var.lambda_package_path != "" ? var.lambda_package_path : null
-  source_code_hash = var.lambda_package_path != "" ? filebase64sha256(var.lambda_package_path) : null
+  filename         = var.lambda_package_path
+  source_code_hash = filebase64sha256(var.lambda_package_path)
 
   environment {
     variables = {
@@ -102,9 +99,6 @@ resource "aws_api_gateway_rest_api" "rest_api" {
   description = "API Gateway for sending comments via SES"
 }
 
-# -------------------------------
-# Resource path: /comment
-# -------------------------------
 resource "aws_api_gateway_resource" "comment_resource" {
   rest_api_id = aws_api_gateway_rest_api.rest_api.id
   parent_id   = aws_api_gateway_rest_api.rest_api.root_resource_id
@@ -130,7 +124,6 @@ resource "aws_api_gateway_integration" "lambda_integration" {
   uri                     = aws_lambda_function.comment_handler.invoke_arn
 }
 
-# POST method response (for CORS)
 resource "aws_api_gateway_method_response" "post_method_response" {
   rest_api_id = aws_api_gateway_rest_api.rest_api.id
   resource_id = aws_api_gateway_resource.comment_resource.id
@@ -143,7 +136,7 @@ resource "aws_api_gateway_method_response" "post_method_response" {
 }
 
 # -------------------------------
-# OPTIONS method for CORS preflight
+# OPTIONS method for CORS
 # -------------------------------
 resource "aws_api_gateway_method" "comment_options" {
   rest_api_id   = aws_api_gateway_rest_api.rest_api.id
@@ -160,20 +153,22 @@ resource "aws_api_gateway_integration" "comment_options_mock" {
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
+}
 
-  # Only MOCK supports integration_response
-  integration_response {
-    status_code = "200"
+resource "aws_api_gateway_integration_response" "options_integration_response" {
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id
+  resource_id = aws_api_gateway_resource.comment_resource.id
+  http_method = aws_api_gateway_method.comment_options.http_method
+  status_code = "200"
 
-    response_parameters = {
-      "method.response.header.Access-Control-Allow-Headers" = "'Content-Type'"
-      "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST,GET'"
-      "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-    }
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST,GET'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
 
-    response_templates = {
-      "application/json" = ""
-    }
+  response_templates = {
+    "application/json" = ""
   }
 }
 
@@ -195,7 +190,7 @@ resource "aws_api_gateway_method_response" "options_method_response" {
 }
 
 # -------------------------------
-# Deployment
+# Deployment & Stage
 # -------------------------------
 resource "aws_api_gateway_deployment" "deployment" {
   rest_api_id = aws_api_gateway_rest_api.rest_api.id
@@ -217,18 +212,14 @@ resource "aws_api_gateway_deployment" "deployment" {
   ]
 }
 
-# -------------------------------
-# Stage - "prod"
-# -------------------------------
 resource "aws_api_gateway_stage" "prod" {
   rest_api_id   = aws_api_gateway_rest_api.rest_api.id
   deployment_id = aws_api_gateway_deployment.deployment.id
   stage_name    = "prod"
-  description   = "Production stage"
 }
 
 # -------------------------------
-# Lambda Permission for API Gateway
+# Lambda permission for API Gateway
 # -------------------------------
 resource "aws_lambda_permission" "allow_apigw" {
   statement_id  = "AllowAPIGatewayInvoke-${random_string.suffix.result}"

@@ -34,10 +34,7 @@ resource "aws_iam_policy" "lambda_ses_policy" {
     Statement = [
       {
         Effect   = "Allow",
-        Action   = [
-          "ses:SendEmail",
-          "ses:SendRawEmail"
-        ],
+        Action   = ["ses:SendEmail","ses:SendRawEmail"],
         Resource = "*"
       }
     ]
@@ -140,6 +137,25 @@ resource "aws_api_gateway_method" "comment_options" {
   authorization = "NONE"
 }
 
+# Method response for OPTIONS (must come first!)
+resource "aws_api_gateway_method_response" "options_method_response" {
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id
+  resource_id = aws_api_gateway_resource.comment_resource.id
+  http_method = aws_api_gateway_method.comment_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+# MOCK integration for OPTIONS
 resource "aws_api_gateway_integration" "comment_options_mock" {
   rest_api_id   = aws_api_gateway_rest_api.rest_api.id
   resource_id   = aws_api_gateway_resource.comment_resource.id
@@ -148,39 +164,19 @@ resource "aws_api_gateway_integration" "comment_options_mock" {
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
-}
 
-resource "aws_api_gateway_integration_response" "options_integration_response" {
-  rest_api_id = aws_api_gateway_rest_api.rest_api.id
-  resource_id = aws_api_gateway_resource.comment_resource.id
-  http_method = aws_api_gateway_method.comment_options.http_method
-  status_code = "200"
+  integration_response {
+    status_code = aws_api_gateway_method_response.options_method_response.status_code
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type'"
-    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST,GET'"
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-  }
+    response_parameters = {
+      "method.response.header.Access-Control-Allow-Headers" = "'Content-Type'"
+      "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST,GET'"
+      "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+    }
 
-  response_templates = {
-    "application/json" = ""
-  }
-}
-
-resource "aws_api_gateway_method_response" "options_method_response" {
-  rest_api_id = aws_api_gateway_rest_api.rest_api.id
-  resource_id = aws_api_gateway_resource.comment_resource.id
-  http_method = aws_api_gateway_method.comment_options.http_method
-  status_code = "200"
-
-  response_models = {
-    "application/json" = "Empty"
-  }
-
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-    "method.response.header.Access-Control-Allow-Origin"  = true
+    response_templates = {
+      "application/json" = ""
+    }
   }
 }
 

@@ -1,3 +1,6 @@
+# -------------------------------
+# Random suffix for unique naming
+# -------------------------------
 resource "random_string" "suffix" {
   length  = 6
   special = false
@@ -92,21 +95,25 @@ resource "aws_lambda_function" "comment_handler" {
 }
 
 # -------------------------------
-# REST API Gateway (stable ID)
+# REST API Gateway
 # -------------------------------
 resource "aws_api_gateway_rest_api" "rest_api" {
   name        = "comment-sender-api"
   description = "API Gateway for sending comments via SES"
 }
 
+# -------------------------------
 # Resource path: /comment
+# -------------------------------
 resource "aws_api_gateway_resource" "comment_resource" {
   rest_api_id = aws_api_gateway_rest_api.rest_api.id
   parent_id   = aws_api_gateway_rest_api.rest_api.root_resource_id
   path_part   = "comment"
 }
 
+# -------------------------------
 # POST method
+# -------------------------------
 resource "aws_api_gateway_method" "comment_post" {
   rest_api_id   = aws_api_gateway_rest_api.rest_api.id
   resource_id   = aws_api_gateway_resource.comment_resource.id
@@ -114,7 +121,7 @@ resource "aws_api_gateway_method" "comment_post" {
   authorization = "NONE"
 }
 
-# Integration with Lambda
+# Lambda integration
 resource "aws_api_gateway_integration" "lambda_integration" {
   rest_api_id             = aws_api_gateway_rest_api.rest_api.id
   resource_id             = aws_api_gateway_resource.comment_resource.id
@@ -124,13 +131,89 @@ resource "aws_api_gateway_integration" "lambda_integration" {
   uri                     = aws_lambda_function.comment_handler.invoke_arn
 }
 
+# Add CORS header to POST response
+resource "aws_api_gateway_integration_response" "post_integration_response" {
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id
+  resource_id = aws_api_gateway_resource.comment_resource.id
+  http_method = aws_api_gateway_method.comment_post.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = "'*'"
+  }
+}
+
+resource "aws_api_gateway_method_response" "post_method_response" {
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id
+  resource_id = aws_api_gateway_resource.comment_resource.id
+  http_method = aws_api_gateway_method.comment_post.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = true
+  }
+}
+
 # -------------------------------
-# Deployment (keeps same API ID)
+# OPTIONS method for CORS preflight
+# -------------------------------
+resource "aws_api_gateway_method" "comment_options" {
+  rest_api_id   = aws_api_gateway_rest_api.rest_api.id
+  resource_id   = aws_api_gateway_resource.comment_resource.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "comment_options_mock" {
+  rest_api_id             = aws_api_gateway_rest_api.rest_api.id
+  resource_id             = aws_api_gateway_resource.comment_resource.id
+  http_method             = aws_api_gateway_method.comment_options.http_method
+  type                    = "MOCK"
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_integration_response" {
+  rest_api_id   = aws_api_gateway_rest_api.rest_api.id
+  resource_id   = aws_api_gateway_resource.comment_resource.id
+  http_method   = aws_api_gateway_method.comment_options.http_method
+  status_code   = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST,GET'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+
+  response_templates = {
+    "application/json" = ""
+  }
+}
+
+resource "aws_api_gateway_method_response" "options_method_response" {
+  rest_api_id = aws_api_gateway_rest_api.rest_api.id
+  resource_id = aws_api_gateway_resource.comment_resource.id
+  http_method = aws_api_gateway_method.comment_options.http_method
+  status_code = "200"
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+# -------------------------------
+# Deployment
 # -------------------------------
 resource "aws_api_gateway_deployment" "deployment" {
   rest_api_id = aws_api_gateway_rest_api.rest_api.id
 
-  # Trigger redeploys when Lambda or integration changes
   triggers = {
     redeploy_hash = sha1(join(",", [
       aws_api_gateway_integration.lambda_integration.id,
@@ -142,11 +225,14 @@ resource "aws_api_gateway_deployment" "deployment" {
     create_before_destroy = true
   }
 
-  depends_on = [aws_api_gateway_integration.lambda_integration]
+  depends_on = [
+    aws_api_gateway_integration.lambda_integration,
+    aws_api_gateway_integration.comment_options_mock
+  ]
 }
 
 # -------------------------------
-# Stage - "prod" (required for REST API)
+# Stage - "prod"
 # -------------------------------
 resource "aws_api_gateway_stage" "prod" {
   rest_api_id   = aws_api_gateway_rest_api.rest_api.id

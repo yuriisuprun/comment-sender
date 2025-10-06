@@ -23,18 +23,26 @@ public class CommentHandler implements RequestHandler<Map<String, Object>, Map<S
     public Map<String, Object> handleRequest(Map<String, Object> input, Context context) {
         context.getLogger().log("Lambda invoked with input: " + input + "\n");
 
+        // Handle CORS preflight (OPTIONS) request
+        String method = (String) input.get("httpMethod");
+        if ("OPTIONS".equalsIgnoreCase(method)) {
+            context.getLogger().log("Handling CORS preflight request.\n");
+            return corsResponse(200, "CORS preflight OK");
+        }
+
+        // Extract comment from body
         String comment = extractComment(input);
         if (comment == null || comment.isBlank()) {
-            return response(400, "Missing or empty 'comment' field in request body.");
+            return corsResponse(400, "Missing or empty 'comment' field in request body.");
         }
 
         try {
             context.getLogger().log("Preparing to send email from " + FROM_EMAIL + " to " + ADMIN_EMAIL + "\n");
             sendEmail(comment, context);
-            return response(200, "Comment sent successfully to admin.");
+            return corsResponse(200, "Comment sent successfully to admin.");
         } catch (Exception e) {
             logException(e, context);
-            return response(500, "Failed to send comment. " + e.getMessage());
+            return corsResponse(500, "Failed to send comment. " + e.getMessage());
         }
     }
 
@@ -82,15 +90,21 @@ public class CommentHandler implements RequestHandler<Map<String, Object>, Map<S
         return null;
     }
 
-    private Map<String, Object> response(int statusCode, String message) {
+    // Adds proper CORS headers to every response
+    private Map<String, Object> corsResponse(int statusCode, String message) {
         Map<String, Object> bodyMap = new HashMap<>();
         bodyMap.put("message", message);
 
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Type", "application/json");
+        headers.put("Access-Control-Allow-Origin", "*");
+        headers.put("Access-Control-Allow-Methods", "OPTIONS,POST,GET");
+        headers.put("Access-Control-Allow-Headers", "Content-Type");
+
         Map<String, Object> response = new HashMap<>();
         response.put("statusCode", statusCode);
-        response.put("headers", Map.of("Content-Type", "application/json"));
+        response.put("headers", headers);
         try {
-            // 🔹 Stringify the body JSON to satisfy Lambda Proxy response format
             response.put("body", OBJECT_MAPPER.writeValueAsString(bodyMap));
         } catch (Exception e) {
             response.put("body", "{\"message\":\"Failed to serialize response body\"}");

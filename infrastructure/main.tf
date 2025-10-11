@@ -1,11 +1,20 @@
+#############################################
+# Variables
+#############################################
+variable "aws_region" {}
+variable "from_email" {}
+variable "admin_email" {}
+variable "lambda_package_path" {
+  default = ""
+}
 variable "existing_api_id" {
-  description = "Optional: Reuse an existing API Gateway ID if available"
+  description = "Optional: reuse an existing API Gateway ID"
   type        = string
   default     = ""
 }
 
 #############################################
-# Random suffix for unique IAM names
+# Random suffix for IAM role uniqueness
 #############################################
 resource "random_string" "suffix" {
   length  = 6
@@ -16,7 +25,7 @@ resource "random_string" "suffix" {
 # IAM Role for Lambda
 #############################################
 resource "aws_iam_role" "lambda_role" {
-  name = "comment-sender-lambda-role"
+  name = "comment-sender-lambda-role-${random_string.suffix.result}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -26,14 +35,10 @@ resource "aws_iam_role" "lambda_role" {
       Action    = "sts:AssumeRole"
     }]
   })
-
-  lifecycle {
-    prevent_destroy = true
-  }
 }
 
 resource "aws_iam_policy" "lambda_ses_policy" {
-  name        = "lambda-ses-send-only"
+  name        = "lambda-ses-send-only-${random_string.suffix.result}"
   description = "Allow Lambda to send emails via SES"
 
   policy = jsonencode({
@@ -49,13 +54,13 @@ resource "aws_iam_policy" "lambda_ses_policy" {
 }
 
 resource "aws_iam_policy_attachment" "lambda_ses_attach" {
-  name       = "lambda-ses-policy-attach"
+  name       = "lambda-ses-policy-attach-${random_string.suffix.result}"
   roles      = [aws_iam_role.lambda_role.name]
   policy_arn = aws_iam_policy.lambda_ses_policy.arn
 }
 
 resource "aws_iam_policy_attachment" "lambda_logs_attach" {
-  name       = "lambda-logs-policy-attach"
+  name       = "lambda-logs-policy-attach-${random_string.suffix.result}"
   roles      = [aws_iam_role.lambda_role.name]
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
@@ -99,34 +104,30 @@ resource "aws_lambda_function" "comment_handler" {
 }
 
 #############################################
-# API Gateway — Create once or reuse existing
+# API Gateway — Create new or reuse existing
 #############################################
 locals {
   use_existing_api = var.existing_api_id != ""
 }
 
-# Only query existing API if ID provided
 data "aws_api_gateway_rest_api" "existing" {
-  id = local.use_existing_api ? var.existing_api_id : null
+  count = local.use_existing_api ? 1 : 0
+  id    = var.existing_api_id
 }
 
 resource "aws_api_gateway_rest_api" "api" {
   count       = local.use_existing_api ? 0 : 1
   name        = "comment-sender-api"
   description = "API Gateway for sending comments via SES"
-
-  lifecycle {
-    prevent_destroy = true
-  }
 }
 
 locals {
-  api_id      = local.use_existing_api ? data.aws_api_gateway_rest_api.existing.id : aws_api_gateway_rest_api.api[0].id
-  api_root_id = local.use_existing_api ? data.aws_api_gateway_rest_api.existing.root_resource_id : aws_api_gateway_rest_api.api[0].root_resource_id
+  api_id      = local.use_existing_api ? data.aws_api_gateway_rest_api.existing[0].id : aws_api_gateway_rest_api.api[0].id
+  api_root_id = local.use_existing_api ? data.aws_api_gateway_rest_api.existing[0].root_resource_id : aws_api_gateway_rest_api.api[0].root_resource_id
 }
 
 #############################################
-# Resource path: /comment
+# Resource: /comment
 #############################################
 resource "aws_api_gateway_resource" "comment" {
   rest_api_id = local.api_id
@@ -163,9 +164,7 @@ resource "aws_api_gateway_method_response" "options_method_response" {
   http_method = aws_api_gateway_method.comment_options.http_method
   status_code = "200"
 
-  response_models = {
-    "application/json" = "Empty"
-  }
+  response_models = { "application/json" = "Empty" }
 
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = true
@@ -180,10 +179,7 @@ resource "aws_api_gateway_integration" "options_mock_integration" {
   http_method   = aws_api_gateway_method.comment_options.http_method
   type          = "MOCK"
 
-  request_templates = {
-    "application/json" = "{\"statusCode\": 200}"
-  }
-
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
   integration_http_method = "POST"
 }
 
@@ -199,9 +195,7 @@ resource "aws_api_gateway_integration_response" "options_integration_response" {
     "method.response.header.Access-Control-Allow-Origin"  = "'*'"
   }
 
-  response_templates = {
-    "application/json" = ""
-  }
+  response_templates = { "application/json" = "" }
 }
 
 resource "aws_api_gateway_deployment" "deployment" {
@@ -214,9 +208,7 @@ resource "aws_api_gateway_deployment" "deployment" {
     ]))
   }
 
-  lifecycle {
-    create_before_destroy = true
-  }
+  lifecycle { create_before_destroy = true }
 
   depends_on = [
     aws_api_gateway_integration.lambda_integration,

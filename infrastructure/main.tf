@@ -1,12 +1,3 @@
-#############################################
-# Variables
-#############################################
-variable "aws_region" {}
-variable "from_email" {}
-variable "admin_email" {}
-variable "lambda_package_path" {
-  default = ""
-}
 variable "existing_api_id" {
   description = "Optional: reuse an existing API Gateway ID"
   type        = string

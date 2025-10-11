@@ -1,16 +1,30 @@
 # -------------------------------
-# Random suffix for unique naming
+# Random suffix (for non-persistent names)
 # -------------------------------
 resource "random_string" "suffix" {
   length  = 6
   special = false
 }
 
+variable "existing_api_id" {
+  description = "Optional: Use an existing API Gateway ID if available"
+  type        = string
+  default     = ""
+}
+
+# -------------------------------
+# Optional existing API data source
+# -------------------------------
+data "aws_api_gateway_rest_api" "existing" {
+  count = var.existing_api_id != "" ? 1 : 0
+  id    = var.existing_api_id
+}
+
 # -------------------------------
 # IAM Role for Lambda
 # -------------------------------
 resource "aws_iam_role" "lambda_role" {
-  name = "comment-sender-lambda-role-${random_string.suffix.result}"
+  name = "comment-sender-lambda-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -20,13 +34,17 @@ resource "aws_iam_role" "lambda_role" {
       Action    = "sts:AssumeRole"
     }]
   })
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # -------------------------------
 # Custom SES Policy (Least Privilege)
 # -------------------------------
 resource "aws_iam_policy" "lambda_ses_policy" {
-  name        = "lambda-ses-send-only-${random_string.suffix.result}"
+  name        = "lambda-ses-send-only"
   description = "Allow Lambda to send emails via SES"
 
   policy = jsonencode({
@@ -45,13 +63,13 @@ resource "aws_iam_policy" "lambda_ses_policy" {
 }
 
 resource "aws_iam_policy_attachment" "lambda_ses_attach" {
-  name       = "lambda-ses-policy-attach-${random_string.suffix.result}"
+  name       = "lambda-ses-policy-attach"
   roles      = [aws_iam_role.lambda_role.name]
   policy_arn = aws_iam_policy.lambda_ses_policy.arn
 }
 
 resource "aws_iam_policy_attachment" "lambda_logs_attach" {
-  name       = "lambda-logs-policy-attach-${random_string.suffix.result}"
+  name       = "lambda-logs-policy-attach"
   roles      = [aws_iam_role.lambda_role.name]
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
@@ -95,19 +113,29 @@ resource "aws_lambda_function" "comment_handler" {
 }
 
 # -------------------------------
-# REST API Gateway
+# API Gateway (Create once or reuse existing)
 # -------------------------------
 resource "aws_api_gateway_rest_api" "api" {
+  count       = var.existing_api_id == "" ? 1 : 0
   name        = "comment-sender-api"
   description = "API Gateway for sending comments via SES"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# Use existing API if provided, otherwise use created one
+locals {
+  api_id = var.existing_api_id != "" ? data.aws_api_gateway_rest_api.existing[0].id : aws_api_gateway_rest_api.api[0].id
 }
 
 # -------------------------------
 # Resource path: /comment
 # -------------------------------
 resource "aws_api_gateway_resource" "comment" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
-  parent_id   = aws_api_gateway_rest_api.api.root_resource_id
+  rest_api_id = local.api_id
+  parent_id   = var.existing_api_id != "" ? data.aws_api_gateway_rest_api.existing[0].root_resource_id : aws_api_gateway_rest_api.api[0].root_resource_id
   path_part   = "comment"
 }
 
@@ -115,14 +143,14 @@ resource "aws_api_gateway_resource" "comment" {
 # POST method (AWS_PROXY Lambda)
 # -------------------------------
 resource "aws_api_gateway_method" "comment_post" {
-  rest_api_id   = aws_api_gateway_rest_api.api.id
+  rest_api_id   = local.api_id
   resource_id   = aws_api_gateway_resource.comment.id
   http_method   = "POST"
   authorization = "NONE"
 }
 
 resource "aws_api_gateway_integration" "lambda_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.api.id
+  rest_api_id             = local.api_id
   resource_id             = aws_api_gateway_resource.comment.id
   http_method             = aws_api_gateway_method.comment_post.http_method
   integration_http_method = "POST"
@@ -134,14 +162,14 @@ resource "aws_api_gateway_integration" "lambda_integration" {
 # OPTIONS method (CORS preflight)
 # -------------------------------
 resource "aws_api_gateway_method" "comment_options" {
-  rest_api_id   = aws_api_gateway_rest_api.api.id
+  rest_api_id   = local.api_id
   resource_id   = aws_api_gateway_resource.comment.id
   http_method   = "OPTIONS"
   authorization = "NONE"
 }
 
 resource "aws_api_gateway_method_response" "options_method_response" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
+  rest_api_id = local.api_id
   resource_id = aws_api_gateway_resource.comment.id
   http_method = aws_api_gateway_method.comment_options.http_method
   status_code = "200"
@@ -158,7 +186,7 @@ resource "aws_api_gateway_method_response" "options_method_response" {
 }
 
 resource "aws_api_gateway_integration" "options_mock_integration" {
-  rest_api_id   = aws_api_gateway_rest_api.api.id
+  rest_api_id   = local.api_id
   resource_id   = aws_api_gateway_resource.comment.id
   http_method   = aws_api_gateway_method.comment_options.http_method
   type          = "MOCK"
@@ -171,7 +199,7 @@ resource "aws_api_gateway_integration" "options_mock_integration" {
 }
 
 resource "aws_api_gateway_integration_response" "options_integration_response" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
+  rest_api_id = local.api_id
   resource_id = aws_api_gateway_resource.comment.id
   http_method = aws_api_gateway_method.comment_options.http_method
   status_code = aws_api_gateway_method_response.options_method_response.status_code
@@ -191,7 +219,7 @@ resource "aws_api_gateway_integration_response" "options_integration_response" {
 # Deployment & Stage
 # -------------------------------
 resource "aws_api_gateway_deployment" "deployment" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
+  rest_api_id = local.api_id
 
   triggers = {
     redeploy_hash = sha1(join(",", [
@@ -211,7 +239,7 @@ resource "aws_api_gateway_deployment" "deployment" {
 }
 
 resource "aws_api_gateway_stage" "prod" {
-  rest_api_id   = aws_api_gateway_rest_api.api.id
+  rest_api_id   = local.api_id
   deployment_id = aws_api_gateway_deployment.deployment.id
   stage_name    = "prod"
   description   = "Production stage"
@@ -221,11 +249,11 @@ resource "aws_api_gateway_stage" "prod" {
 # Lambda Permission
 # -------------------------------
 resource "aws_lambda_permission" "allow_apigw" {
-  statement_id  = "AllowAPIGatewayInvoke-${random_string.suffix.result}"
+  statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.comment_handler.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.api.execution_arn}/*/*"
+  source_arn    = "${local.api_id}/*/*"
 }
 
 # -------------------------------
@@ -233,5 +261,5 @@ resource "aws_lambda_permission" "allow_apigw" {
 # -------------------------------
 output "api_invoke_url" {
   description = "Invoke URL for API Gateway endpoint"
-  value       = "https://${aws_api_gateway_rest_api.api.id}.execute-api.${var.aws_region}.amazonaws.com/prod/comment"
+  value       = "https://${local.api_id}.execute-api.${var.aws_region}.amazonaws.com/prod/comment"
 }

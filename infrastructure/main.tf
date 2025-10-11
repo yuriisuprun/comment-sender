@@ -1,28 +1,20 @@
-# -------------------------------
-# Random suffix (for non-persistent names)
-# -------------------------------
+variable "existing_api_id" {
+  description = "Optional: Reuse an existing API Gateway ID if available"
+  type        = string
+  default     = ""
+}
+
+#############################################
+# Random suffix for unique IAM names
+#############################################
 resource "random_string" "suffix" {
   length  = 6
   special = false
 }
 
-variable "existing_api_id" {
-  description = "Optional: Use an existing API Gateway ID if available"
-  type        = string
-  default     = ""
-}
-
-# -------------------------------
-# Optional existing API data source
-# -------------------------------
-data "aws_api_gateway_rest_api" "existing" {
-  count = var.existing_api_id != "" ? 1 : 0
-  id    = var.existing_api_id
-}
-
-# -------------------------------
+#############################################
 # IAM Role for Lambda
-# -------------------------------
+#############################################
 resource "aws_iam_role" "lambda_role" {
   name = "comment-sender-lambda-role"
 
@@ -40,9 +32,9 @@ resource "aws_iam_role" "lambda_role" {
   }
 }
 
-# -------------------------------
-# Custom SES Policy (Least Privilege)
-# -------------------------------
+#############################################
+# SES Policy (Least Privilege)
+#############################################
 resource "aws_iam_policy" "lambda_ses_policy" {
   name        = "lambda-ses-send-only"
   description = "Allow Lambda to send emails via SES"
@@ -52,10 +44,7 @@ resource "aws_iam_policy" "lambda_ses_policy" {
     Statement = [
       {
         Effect   = "Allow",
-        Action   = [
-          "ses:SendEmail",
-          "ses:SendRawEmail"
-        ],
+        Action   = ["ses:SendEmail", "ses:SendRawEmail"],
         Resource = "*"
       }
     ]
@@ -74,9 +63,9 @@ resource "aws_iam_policy_attachment" "lambda_logs_attach" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# -------------------------------
+#############################################
 # SES Email Identities
-# -------------------------------
+#############################################
 resource "aws_ses_email_identity" "from_email" {
   email = var.from_email
 }
@@ -85,9 +74,9 @@ resource "aws_ses_email_identity" "admin_email" {
   email = var.admin_email
 }
 
-# -------------------------------
+#############################################
 # Lambda Function
-# -------------------------------
+#############################################
 resource "aws_lambda_function" "comment_handler" {
   function_name = "comment-sender-lambda"
   handler       = "handler.CommentHandler::handleRequest"
@@ -112,11 +101,22 @@ resource "aws_lambda_function" "comment_handler" {
   ]
 }
 
-# -------------------------------
-# API Gateway (Create once or reuse existing)
-# -------------------------------
+#############################################
+# API Gateway — Create once or reuse existing
+#############################################
+locals {
+  use_existing_api = var.existing_api_id != ""
+}
+
+# Reuse existing API Gateway if ID provided
+data "aws_api_gateway_rest_api" "existing" {
+  for_each = local.use_existing_api ? { "api" = var.existing_api_id } : {}
+  id       = each.value
+}
+
+# Create API Gateway if not reusing
 resource "aws_api_gateway_rest_api" "api" {
-  count       = var.existing_api_id == "" ? 1 : 0
+  count       = local.use_existing_api ? 0 : 1
   name        = "comment-sender-api"
   description = "API Gateway for sending comments via SES"
 
@@ -125,23 +125,24 @@ resource "aws_api_gateway_rest_api" "api" {
   }
 }
 
-# Use existing API if provided, otherwise use created one
+# Dynamic reference to chosen API
 locals {
-  api_id = var.existing_api_id != "" ? data.aws_api_gateway_rest_api.existing[0].id : aws_api_gateway_rest_api.api[0].id
+  api_id          = local.use_existing_api ? data.aws_api_gateway_rest_api.existing["api"].id : aws_api_gateway_rest_api.api[0].id
+  api_root_id     = local.use_existing_api ? data.aws_api_gateway_rest_api.existing["api"].root_resource_id : aws_api_gateway_rest_api.api[0].root_resource_id
 }
 
-# -------------------------------
+#############################################
 # Resource path: /comment
-# -------------------------------
+#############################################
 resource "aws_api_gateway_resource" "comment" {
   rest_api_id = local.api_id
-  parent_id   = var.existing_api_id != "" ? data.aws_api_gateway_rest_api.existing[0].root_resource_id : aws_api_gateway_rest_api.api[0].root_resource_id
+  parent_id   = local.api_root_id
   path_part   = "comment"
 }
 
-# -------------------------------
+#############################################
 # POST method (AWS_PROXY Lambda)
-# -------------------------------
+#############################################
 resource "aws_api_gateway_method" "comment_post" {
   rest_api_id   = local.api_id
   resource_id   = aws_api_gateway_resource.comment.id
@@ -158,9 +159,9 @@ resource "aws_api_gateway_integration" "lambda_integration" {
   uri                     = aws_lambda_function.comment_handler.invoke_arn
 }
 
-# -------------------------------
+#############################################
 # OPTIONS method (CORS preflight)
-# -------------------------------
+#############################################
 resource "aws_api_gateway_method" "comment_options" {
   rest_api_id   = local.api_id
   resource_id   = aws_api_gateway_resource.comment.id
@@ -215,9 +216,9 @@ resource "aws_api_gateway_integration_response" "options_integration_response" {
   }
 }
 
-# -------------------------------
+#############################################
 # Deployment & Stage
-# -------------------------------
+#############################################
 resource "aws_api_gateway_deployment" "deployment" {
   rest_api_id = local.api_id
 
@@ -245,20 +246,22 @@ resource "aws_api_gateway_stage" "prod" {
   description   = "Production stage"
 }
 
-# -------------------------------
+#############################################
 # Lambda Permission
-# -------------------------------
+#############################################
 resource "aws_lambda_permission" "allow_apigw" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.comment_handler.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${local.api_id}/*/*"
+  source_arn    = "arn:aws:execute-api:${var.aws_region}:${data.aws_caller_identity.current.account_id}:${local.api_id}/*/*"
 }
 
-# -------------------------------
-# Output
-# -------------------------------
+data "aws_caller_identity" "current" {}
+
+#############################################
+# Outputs
+#############################################
 output "api_invoke_url" {
   description = "Invoke URL for API Gateway endpoint"
   value       = "https://${local.api_id}.execute-api.${var.aws_region}.amazonaws.com/prod/comment"

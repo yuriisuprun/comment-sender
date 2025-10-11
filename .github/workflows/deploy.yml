@@ -7,7 +7,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,6 +34,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -55,9 +57,26 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-central-1
 
+      - name: Cache Terraform plugins and modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.terraform.d/plugin-cache
+            ./infrastructure/.terraform
+          key: ${{ runner.os }}-terraform-${{ hashFiles('./infrastructure/**/*.tf') }}
+
       - name: Terraform Init
         working-directory: ./infrastructure
-        run: terraform init
+        run: terraform init -plugin-dir ~/.terraform.d/plugin-cache
+
+      - name: Detect existing API Gateway
+        id: detect-api
+        run: |
+          set +e
+          EXISTING_API_ID=$(aws apigateway get-rest-apis --query "items[?name=='comment-sender-api'].id" --output text)
+          echo "Detected API ID: $EXISTING_API_ID"
+          echo "existing_api_id=$EXISTING_API_ID" >> $GITHUB_ENV
+          set -e
 
       - name: Import existing Lambda (if needed)
         working-directory: ./infrastructure
@@ -65,14 +84,20 @@ jobs:
           set -e
           if ! terraform state list | grep -q "aws_lambda_function.comment_handler"; then
             echo "Importing existing Lambda function into Terraform state..."
-            terraform import -input=false aws_lambda_function.comment_handler comment-sender-lambda
+            terraform import -input=false aws_lambda_function.comment_handler comment-sender-lambda || true
           else
             echo "Lambda function already imported."
           fi
 
-      - name: Find JAR and Apply Terraform
+      - name: Find JAR and Plan Terraform
         working-directory: ./infrastructure
         run: |
           JAR_PATH=$(ls ../lambda/build/libs/*.jar | head -n 1)
           echo "Using JAR: $JAR_PATH"
-          terraform apply -auto-approve -var="lambda_package_path=$JAR_PATH"
+          terraform plan -out=tfplan \
+            -var="lambda_package_path=$JAR_PATH" \
+            -var="existing_api_id=${{ env.existing_api_id }}"
+
+      - name: Apply Terraform Plan
+        working-directory: ./infrastructure
+        run: terraform apply -auto-approve tfplan

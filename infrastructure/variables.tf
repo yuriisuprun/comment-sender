@@ -1,11 +1,36 @@
-variable "aws_region" { default = "eu-central-1" }
+#############################################
+# Variables
+#############################################
+variable "aws_region" {
+  description = "AWS Region"
+  type        = string
+  default = "eu-central-1"
+}
 
-variable "admin_email" { default = "iursuprun@gmail.com" }
+variable "from_email" {
+  description = "SES From Email"
+  type        = string
+  default = "iursuprun@gmail.com"
 
-variable "from_email" { default = "iursuprun@gmail.com" }
+  validation {
+    condition     = length(var.from_email) > 0
+    error_message = "from_email must be provided and non-empty"
+  }
+}
+
+variable "admin_email" {
+  description = "SES Admin Email"
+  type        = string
+  default = "iursuprun@gmail.com"
+
+  validation {
+    condition     = length(var.admin_email) > 0
+    error_message = "admin_email must be provided and non-empty"
+  }
+}
 
 variable "lambda_package_path" {
-  description = "Path to the built Lambda JAR file"
+  description = "Path to Lambda JAR file"
   type        = string
   default     = ""
 }

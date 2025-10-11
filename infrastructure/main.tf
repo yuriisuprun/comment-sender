@@ -103,12 +103,11 @@ resource "aws_api_gateway_rest_api" "api" {
   description = "API Gateway for sending comments via SES"
 }
 
-# Local API ID
 locals {
   api_id = var.existing_api_id != "" ? var.existing_api_id : aws_api_gateway_rest_api.api[0].id
 }
 
-# Root resource ID
+# Root resource
 data "aws_api_gateway_resource" "root" {
   rest_api_id = local.api_id
   path        = "/"

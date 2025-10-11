@@ -54,13 +54,6 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-      - name: Cache Terraform plugins
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.terraform.d/plugin-cache
-            ./infrastructure/.terraform
-          key: ${{ runner.os }}-terraform-${{ hashFiles('./infrastructure/**/*.tf') }}
       - name: Prepare plugin cache
         run: mkdir -p ~/.terraform.d/plugin-cache
       - name: Terraform Init

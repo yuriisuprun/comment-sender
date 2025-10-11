@@ -1,3 +1,12 @@
+#############################################
+# Variables
+#############################################
+variable "aws_region" {}
+variable "from_email" {}
+variable "admin_email" {}
+variable "lambda_package_path" {
+  default = ""
+}
 variable "existing_api_id" {
   description = "Optional: reuse an existing API Gateway ID"
   type        = string
@@ -95,26 +104,23 @@ resource "aws_lambda_function" "comment_handler" {
 }
 
 #############################################
-# API Gateway — Create new or reuse existing
+# API Gateway — create or reuse
 #############################################
-locals {
-  use_existing_api = var.existing_api_id != ""
-}
-
-data "aws_api_gateway_rest_api" "existing" {
-  count = local.use_existing_api ? 1 : 0
-  id    = var.existing_api_id
-}
-
 resource "aws_api_gateway_rest_api" "api" {
-  count       = local.use_existing_api ? 0 : 1
+  count       = var.existing_api_id == "" ? 1 : 0
   name        = "comment-sender-api"
   description = "API Gateway for sending comments via SES"
 }
 
+# Local API ID
 locals {
-  api_id      = local.use_existing_api ? data.aws_api_gateway_rest_api.existing[0].id : aws_api_gateway_rest_api.api[0].id
-  api_root_id = local.use_existing_api ? data.aws_api_gateway_rest_api.existing[0].root_resource_id : aws_api_gateway_rest_api.api[0].root_resource_id
+  api_id = var.existing_api_id != "" ? var.existing_api_id : aws_api_gateway_rest_api.api[0].id
+}
+
+# Root resource ID
+data "aws_api_gateway_resource" "root" {
+  rest_api_id = local.api_id
+  path        = "/"
 }
 
 #############################################
@@ -122,7 +128,7 @@ locals {
 #############################################
 resource "aws_api_gateway_resource" "comment" {
   rest_api_id = local.api_id
-  parent_id   = local.api_root_id
+  parent_id   = data.aws_api_gateway_resource.root.id
   path_part   = "comment"
 }
 
